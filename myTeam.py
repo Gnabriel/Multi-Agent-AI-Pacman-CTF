@@ -1,92 +1,150 @@
-# myTeam.py
-# ---------
-# Licensing Information:  You are free to use or extend these projects for
-# educational purposes provided that (1) you do not distribute or publish
-# solutions, (2) you retain this notice, and (3) you provide clear
-# attribution to UC Berkeley, including a link to http://ai.berkeley.edu.
-# 
-# Attribution Information: The Pacman AI projects were developed at UC Berkeley.
-# The core projects and autograders were primarily created by John DeNero
-# (denero@cs.berkeley.edu) and Dan Klein (klein@cs.berkeley.edu).
-# Student side autograding was added by Brad Miller, Nick Hay, and
-# Pieter Abbeel (pabbeel@cs.berkeley.edu).
+from math import sqrt
+from typing import Tuple
 
-
+from capture import GameState
 from captureAgents import CaptureAgent
-import random, time, util
+import random, time
+
 from game import Directions
-import game
 
-#################
-# Team creation #
-#################
 
-def createTeam(firstIndex, secondIndex, isRed,
-               first = 'DummyAgent', second = 'DummyAgent'):
-  """
-  This function should return a list of two agents that will form the
-  team, initialized using firstIndex and secondIndex as their agent
-  index numbers.  isRed is True if the red team is being created, and
-  will be False if the blue team is being created.
+def createTeam(
+    firstIndex: int,
+    secondIndex: int,
+    isRed: bool,
+    first: str = "DummyAgent",
+    second: str = "DummyAgent",
+):
+    # The following line is an example only; feel free to change it.
+    return [eval(first)(firstIndex), eval(second)(secondIndex)]
 
-  As a potentially helpful development aid, this function can take
-  additional string-valued keyword arguments ("first" and "second" are
-  such arguments in the case of this function), which will come from
-  the --redOpts and --blueOpts command-line arguments to capture.py.
-  For the nightly contest, however, your team will be created without
-  any extra arguments, so you should make sure that the default
-  behavior is what you want for the nightly contest.
-  """
 
-  # The following line is an example only; feel free to change it.
-  return [eval(first)(firstIndex), eval(second)(secondIndex)]
+def get_direction(pos1: Tuple[int, int], pos2: Tuple[int, int]) -> Directions:
+    if pos1[0] == pos2[0] and pos1[1] == pos2[1]:
+        return Directions.STOP
+    else:
+        if pos1[0] == pos2[0]:
+            if pos1[1] < pos2[1]:
+                return Directions.NORTH
+            else:
+                return Directions.SOUTH
+        else:
+            if pos1[0] < pos2[0]:
+                return Directions.EAST
+            else:
+                return Directions.WEST
 
-##########
-# Agents #
-##########
 
 class DummyAgent(CaptureAgent):
-  """
-  A Dummy agent to serve as an example of the necessary agent structure.
-  You should look at baselineTeam.py for more details about how to
-  create an agent as this is the bare minimum.
-  """
+    is_pacman: bool = True
 
-  def registerInitialState(self, gameState):
-    """
-    This method handles the initial setup of the
-    agent to populate useful fields (such as what team
-    we're on).
+    def registerInitialState(self, gameState: GameState):
+        CaptureAgent.registerInitialState(self, gameState)
 
-    A distanceCalculator instance caches the maze distances
-    between each pair of positions, so your agents can use:
-    self.distancer.getDistance(p1, p2)
+        self.is_pacman = (
+            self.index == (gameState.redTeam if self.red else gameState.blueTeam)[0]
+        )
 
-    IMPORTANT: This method may run for at most 15 seconds.
-    """
+    def is_enemy_area(self, gameState: GameState, pos: Tuple[int, int]) -> bool:
+        if self.red:
+            return pos[0] >= gameState.data.layout.width / 2
+        else:
+            return pos[0] <= gameState.data.layout.width / 2
 
-    '''
-    Make sure you do not delete the following line. If you would like to
-    use Manhattan distances instead of maze distances in order to save
-    on initialization time, please take a look at
-    CaptureAgent.registerInitialState in captureAgents.py.
-    '''
-    CaptureAgent.registerInitialState(self, gameState)
+    def is_enemy_food(self, gameState: GameState, pos: Tuple[int, int]) -> bool:
+        return gameState.data.food.data[pos[0]][pos[1]] and self.is_enemy_area(
+            gameState=gameState, pos=pos
+        )
 
-    '''
-    Your initialization code goes here, if you need any.
-    '''
+    def get_current_pos(self, gameState: GameState) -> Tuple[int, int]:
+        current_pos = gameState.data.agentStates[self.index].configuration.pos
+        return int(current_pos[0]), int(current_pos[1])
 
+    def is_target(self, gameState: GameState, pos: Tuple[int, int]):
+        if self.is_pacman:
+            if (
+                self.is_close_to_ghost(
+                    gameState=gameState, pos=self.get_current_pos(gameState=gameState),
+                )
+                or gameState.data.agentStates[self.index].numCarrying >= 9
+            ):
+                return not self.is_enemy_area(gameState=gameState, pos=pos)
+            else:
+                return self.is_enemy_food(gameState=gameState, pos=pos)
+        else:
+            if self.is_enemy_area(gameState=gameState, pos=pos):
+                return False
+            else:
+                return any(
+                    [
+                        a.configuration.pos[0] == pos[0]
+                        and a.configuration.pos[1] == pos[1]
+                        for i, a in enumerate(gameState.data.agentStates)
+                        if a.configuration
+                        and (
+                            (self.red and i in gameState.blueTeam)
+                            or (not self.red and i in gameState.redTeam)
+                        )
+                        and a.isPacman
+                    ]
+                )
 
-  def chooseAction(self, gameState):
-    """
-    Picks among actions randomly.
-    """
-    actions = gameState.getLegalActions(self.index)
+    def is_close_to_ghost(self, gameState: GameState, pos: Tuple[int, int]):
+        return any(
+            [
+                sqrt(
+                    pow(abs(a.configuration.pos[0] - pos[0]), 2)
+                    + pow(abs(a.configuration.pos[1] - pos[1]), 2)
+                )
+                < 3
+                for i, a in enumerate(gameState.data.agentStates)
+                if a.configuration
+                and (
+                    (self.red and i in gameState.blueTeam)
+                    or (not self.red and i in gameState.redTeam)
+                )
+                and not a.isPacman
+            ]
+        )
 
-    '''
-    You should change this in your own agent.
-    '''
+    def chooseAction(self, gameState: GameState):
+        time.sleep(0.025)
+        initial_pos = self.get_current_pos(gameState=gameState)
+        actions = gameState.getLegalActions(self.index)
 
-    return random.choice(actions)
+        parent = {}
+        queue = []
+        current_pos = None
+        queue.append(initial_pos)
 
+        while queue:
+            current_pos = queue.pop(0)
+            if self.is_target(gameState=gameState, pos=current_pos):
+                break
+
+            adjacents = [
+                (current_pos[0] - 1, current_pos[1]),
+                (current_pos[0] + 1, current_pos[1]),
+                (current_pos[0], current_pos[1] - 1),
+                (current_pos[0], current_pos[1] + 1),
+            ]
+
+            for adj in adjacents:
+                if (
+                    0 <= adj[0] <= gameState.data.layout.width
+                    and 0 <= adj[1] <= gameState.data.layout.height
+                    and not gameState.data.layout.walls.data[adj[0]][adj[1]]
+                    and adj not in parent.keys()
+                    and (
+                        self.is_pacman
+                        or not self.is_enemy_area(gameState=gameState, pos=adj)
+                    )
+                ):
+                    parent[adj] = current_pos
+                    queue.append(adj)
+
+        if current_pos:
+            while current_pos in parent.keys() and parent[current_pos] != initial_pos:
+                current_pos = parent[current_pos]
+            return get_direction(initial_pos, current_pos)
+        return random.choice(actions)
