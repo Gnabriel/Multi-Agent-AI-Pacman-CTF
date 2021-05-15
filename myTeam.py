@@ -62,15 +62,32 @@ class DummyAgent(CaptureAgent):
 
     def is_target(self, gameState: GameState, pos: Tuple[int, int]):
         if self.is_pacman:
-            if (
-                self.is_close_to_ghost(
-                    gameState=gameState, pos=self.get_current_pos(gameState=gameState),
-                )
-                or gameState.data.agentStates[self.index].numCarrying >= 9
+            if any(
+                [
+                    a.configuration.pos[0] == pos[0]
+                    and a.configuration.pos[1] == pos[1]
+                    and a.scaredTimer > 5
+                    for i, a in enumerate(gameState.data.agentStates)
+                    if a.configuration
+                    and (
+                        (self.red and i in gameState.blueTeam)
+                        or (not self.red and i in gameState.redTeam)
+                    )
+                    and a.isPacman
+                ]
             ):
-                return not self.is_enemy_area(gameState=gameState, pos=pos)
+                return True
             else:
-                return self.is_enemy_food(gameState=gameState, pos=pos)
+                if (
+                    self.is_close_to_ghost(
+                        gameState=gameState,
+                        pos=self.get_current_pos(gameState=gameState),
+                    )
+                    or gameState.data.agentStates[self.index].numCarrying >= 9
+                ):
+                    return not self.is_enemy_area(gameState=gameState, pos=pos)
+                else:
+                    return self.is_enemy_food(gameState=gameState, pos=pos)
         else:
             if self.is_enemy_area(gameState=gameState, pos=pos):
                 return False
