@@ -68,41 +68,95 @@ class DummyAgent(CaptureAgent):
         current_pos = gameState.data.agentStates[self.index].configuration.pos
         return int(current_pos[0]), int(current_pos[1])
 
+    def get_possible_positions(self, gameState: GameState, noisy_distances):
+        """
+        Returns possible positions found by DFS from a set of noisy distances.
+        """
+        initial_pos = self.get_current_pos(gameState=gameState)
+        possible_positions = []
+
+        parent = {}
+        stack = []
+        current_pos = None
+        stack.append(initial_pos)
+
+        for noisy_target_dist in noisy_distances:
+            current_dist = 0
+            # DFS search.
+            while stack:
+                current_pos = stack.pop(-1)
+                current_dist += 1
+
+                if current_dist == noisy_target_dist:
+                    possible_positions.append(current_pos)
+                    current_dist -= 1
+                    break
+
+                adjacents = [
+                    (current_pos[0] - 1, current_pos[1]),
+                    (current_pos[0] + 1, current_pos[1]),
+                    (current_pos[0], current_pos[1] - 1),
+                    (current_pos[0], current_pos[1] + 1),
+                ]
+
+                for adj in adjacents:
+                    if (
+                        # Within bounds and not wall.
+                        0 <= adj[0] <= gameState.data.layout.width
+                        and 0 <= adj[1] <= gameState.data.layout.height
+                        and not gameState.data.layout.walls.data[adj[0]][adj[1]]
+                        and adj not in parent.keys()
+                    ):
+                        parent[adj] = current_pos
+                        stack.append(adj)
+                    else:
+                        current_dist -= 1
+        return possible_positions
+
     def is_enemy_behind(self, gameState: GameState, target_pos: Tuple[int, int], enemy_pos: Tuple[int, int]) -> bool:
         # TODO: Check if enemy is behind the agent with respect to the direction of the target_pos.
+        agent_pos = self.get_current_pos(gameState=gameState)
+        target_x_dir, target_y_dir = agent_pos[0]-target_pos[0], agent_pos[1]-target_pos[1]
+        enemy_x_dir, enemy_y_dir = agent_pos[0]-enemy_pos[0], agent_pos[1]-enemy_pos[1]
         return False
 
     def pos_reachable(self, gameState: GameState, target_pos: Tuple[int, int]) -> bool:
         # Check if this agent can reach a position before it gets eaten by an enemy ghost.
-        current_pos = self.get_current_pos(gameState=gameState)
-        target_dist = self.distancer.getDistance(current_pos, target_pos)
+        agent_pos = self.get_current_pos(gameState=gameState)
+        agent_target_dist = self.distancer.getDistance(agent_pos, target_pos)
         for enemy in self.enemies:
+            possible_enemy_positions = []
             enemy_pos = gameState.getAgentPosition(enemy)
             if enemy_pos is not None:
                 # Enemy is in sight and we have its exact position.
-                enemy_distances = [self.distancer.getDistance(current_pos, enemy_pos)]
-                if self.is_enemy_behind(gameState=gameState, target_pos=target_pos, enemy_pos=enemy_pos):
-                    # If enemy is behind it is not a threat.
-                    continue
+                possible_enemy_positions.append(enemy_pos)
             else:
                 # Enemy is not in sight, estimate position.
                 enemy_distances = gameState.getAgentDistances()[enemy]      # Get noisy enemy distances.
+                possible_enemy_positions = self.get_possible_positions(gameState, enemy_distances)
 
             # Check if target can be reached before an enemy may reach us.
-            for enemy_dist in enemy_distances:
-                if target_dist <= enemy_dist * 2:   # TODO: This check is obv. not correct and needs fix. ###################################
+            for enemy_pos in possible_enemy_positions:
+                # if self.is_enemy_behind(gameState=gameState, target_pos=target_pos, enemy_pos=enemy_pos):
+                #     # If enemy is behind it is not a threat.
+                #     break
+
+                enemy_target_dist = self.distancer.getDistance(enemy_pos, target_pos)
+                if enemy_target_dist <= agent_target_dist:
+                    # TODO: This check is not ideal since presumably the enemy chases the agent and not our target.
                     return False
         return True
 
-    def power_up_reachable(self, gameState: GameState):
+    def get_reachable_power_ups(self, gameState: GameState):
+        reachable_power_ups = []
         if self.red:
             power_ups = gameState.getRedCapsules()
         else:
             power_ups = gameState.getBlueCapsules()
         for capsule_pos in power_ups:
             if self.pos_reachable(gameState=gameState, target_pos=capsule_pos):
-                return capsule_pos
-        return None
+                reachable_power_ups.append(capsule_pos)
+        return reachable_power_ups
 
     def is_target(self, gameState: GameState, pos: Tuple[int, int]):
         if self.is_pacman:
