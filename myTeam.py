@@ -68,7 +68,7 @@ class DummyAgent(CaptureAgent):
         current_pos = gameState.data.agentStates[self.index].configuration.pos
         return int(current_pos[0]), int(current_pos[1])
 
-    def get_possible_positions(self, gameState: GameState, noisy_distances):
+    def get_possible_positions(self, gameState: GameState, noisy_distance):
         """
         Returns possible positions found by DFS from a set of noisy distances.
         """
@@ -80,37 +80,36 @@ class DummyAgent(CaptureAgent):
         current_pos = None
         stack.append(initial_pos)
 
-        for noisy_target_dist in noisy_distances:
-            current_dist = 0
-            # DFS search.
-            while stack:
-                current_pos = stack.pop(-1)
-                current_dist += 1
+        current_dist = 0
+        # DFS search.
+        while stack:
+            current_pos = stack.pop(-1)
+            current_dist += 1
 
-                if current_dist == noisy_target_dist:
-                    possible_positions.append(current_pos)
+            if current_dist == noisy_distance:
+                possible_positions.append(current_pos)
+                current_dist -= 1
+                break
+
+            adjacents = [
+                (current_pos[0] - 1, current_pos[1]),
+                (current_pos[0] + 1, current_pos[1]),
+                (current_pos[0], current_pos[1] - 1),
+                (current_pos[0], current_pos[1] + 1),
+            ]
+
+            for adj in adjacents:
+                if (
+                    # Within bounds and not wall.
+                    0 <= adj[0] <= gameState.data.layout.width
+                    and 0 <= adj[1] <= gameState.data.layout.height
+                    and not gameState.data.layout.walls.data[adj[0]][adj[1]]
+                    and adj not in parent.keys()
+                ):
+                    parent[adj] = current_pos
+                    stack.append(adj)
+                else:
                     current_dist -= 1
-                    break
-
-                adjacents = [
-                    (current_pos[0] - 1, current_pos[1]),
-                    (current_pos[0] + 1, current_pos[1]),
-                    (current_pos[0], current_pos[1] - 1),
-                    (current_pos[0], current_pos[1] + 1),
-                ]
-
-                for adj in adjacents:
-                    if (
-                        # Within bounds and not wall.
-                        0 <= adj[0] <= gameState.data.layout.width
-                        and 0 <= adj[1] <= gameState.data.layout.height
-                        and not gameState.data.layout.walls.data[adj[0]][adj[1]]
-                        and adj not in parent.keys()
-                    ):
-                        parent[adj] = current_pos
-                        stack.append(adj)
-                    else:
-                        current_dist -= 1
         return possible_positions
 
     def is_enemy_behind(self, gameState: GameState, target_pos: Tuple[int, int], enemy_pos: Tuple[int, int]) -> bool:
@@ -125,22 +124,26 @@ class DummyAgent(CaptureAgent):
         agent_pos = self.get_current_pos(gameState=gameState)
         agent_target_dist = self.distancer.getDistance(agent_pos, target_pos)
         for enemy in self.enemies:
-            possible_enemy_positions = []
-            enemy_pos = gameState.getAgentPosition(enemy)
-            if enemy_pos is not None:
-                # Enemy is in sight and we have its exact position.
-                possible_enemy_positions.append(enemy_pos)
-            else:
+            get_enemy_pos = gameState.getAgentPosition(enemy)
+            enemy_positions = []
+            if get_enemy_pos is None:
                 # Enemy is not in sight, estimate position.
-                enemy_distances = gameState.getAgentDistances()[enemy]      # Get noisy enemy distances.
-                possible_enemy_positions = self.get_possible_positions(gameState, enemy_distances)
+                noisy_enemy_dist = gameState.getAgentDistances()[enemy]      # Get noisy enemy distance.
+                possible_enemy_positions = self.get_possible_positions(gameState, noisy_enemy_dist)
+                if not possible_enemy_positions:
+                    # If no possible enemy position is found, return False.
+                    # TODO: Return True instead?
+                    return False
+                enemy_positions = possible_enemy_positions
+            else:
+                # Exact enemy position is found.
+                enemy_positions.append(get_enemy_pos)
 
-            # Check if target can be reached before an enemy may reach us.
-            for enemy_pos in possible_enemy_positions:
+            # Check if target can be reached before an enemy may reach it.
+            for enemy_pos in enemy_positions:
                 # if self.is_enemy_behind(gameState=gameState, target_pos=target_pos, enemy_pos=enemy_pos):
                 #     # If enemy is behind it is not a threat.
                 #     break
-
                 enemy_target_dist = self.distancer.getDistance(enemy_pos, target_pos)
                 if enemy_target_dist <= agent_target_dist:
                     # TODO: This check is not ideal since presumably the enemy chases the agent and not our target.
@@ -227,7 +230,15 @@ class DummyAgent(CaptureAgent):
         initial_pos = self.get_current_pos(gameState=gameState)
         actions = gameState.getLegalActions(self.index)
 
-        self.power_up_reachable
+        reachable_power_ups = self.get_reachable_power_ups(gameState)
+        if reachable_power_ups:
+            closest_power_up = None
+            closest_power_up_dist = float('inf')
+            for power_up in reachable_power_ups:
+                power_up_dist = self.distancer.getDistance(initial_pos, power_up)
+                if power_up_dist <= closest_power_up_dist:
+                    closest_power_up = power_up
+                    closest_power_up_dist = power_up_dist
 
         parent = {}
         queue = []
