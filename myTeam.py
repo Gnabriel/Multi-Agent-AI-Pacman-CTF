@@ -150,7 +150,7 @@ class DummyAgent(CaptureAgent):
                     return False
         return True
 
-    def get_reachable_power_up(self, gameState: GameState):
+    def get_power_ups(self, gameState: GameState):
         closest_power_up = None
         reachable_power_ups = []
         initial_pos = self.get_current_pos(gameState=gameState)
@@ -158,18 +158,19 @@ class DummyAgent(CaptureAgent):
             power_ups = gameState.getRedCapsules()
         else:
             power_ups = gameState.getBlueCapsules()
-        for capsule_pos in power_ups:
-            if self.pos_reachable(gameState=gameState, target_pos=capsule_pos):
-                reachable_power_ups.append(capsule_pos)
-
-        if reachable_power_ups:
-            closest_power_up_dist = float('inf')
-            for power_up in reachable_power_ups:
-                power_up_dist = self.distancer.getDistance(initial_pos, power_up)
-                if power_up_dist <= closest_power_up_dist:
-                    closest_power_up = power_up
-                    closest_power_up_dist = power_up_dist
-        return closest_power_up
+        # for capsule_pos in power_ups:
+        #     # if self.pos_reachable(gameState=gameState, target_pos=capsule_pos):
+        #     #     reachable_power_ups.append(capsule_pos)
+        #     reachable_power_ups.append(capsule_pos)
+        #
+        # if reachable_power_ups:
+        #     closest_power_up_dist = float('inf')
+        #     for power_up in reachable_power_ups:
+        #         power_up_dist = self.distancer.getDistance(initial_pos, power_up)
+        #         if power_up_dist <= closest_power_up_dist:
+        #             closest_power_up = power_up
+        #             closest_power_up_dist = power_up_dist
+        return power_ups
 
     def is_target(self, gameState: GameState, pos: Tuple[int, int]):
         if self.is_pacman:
@@ -185,7 +186,8 @@ class DummyAgent(CaptureAgent):
                         or (not self.red and i in gameState.redTeam)
                     )
                     and a.isPacman
-                    or pos == self.get_reachable_power_up(gameState)
+                    or pos in self.get_power_ups(gameState)                         # TODO: Is this written correctly?
+                    and self.pos_reachable(gameState=gameState, target_pos=pos)     # TODO: Skip this check if power-up is active.
                 ]
             ):
                 return True
